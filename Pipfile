@@ -10,7 +10,9 @@ torchaudio = "*"
 requests = "*"
 beautifulsoup4 = "*"
 tqdm = "*"
-google-images-download = "*"
+selenium = "==3.141.0"
+bing-image-downloader = "*"
+scikit-learn = "*"
 
 [dev-packages]
 
