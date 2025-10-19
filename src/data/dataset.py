@@ -11,19 +11,38 @@ from tqdm import tqdm
 
 
 def _augment_and_balance_class(class_dir, target_count):
-    image_paths = [os.path.join(class_dir, f) for f in os.listdir(class_dir) if
-                   f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-    current_count = len(image_paths)
+    """
+    Replaces the original images in a class directory with a new, fully augmented
+    set of images of a specific target count.
 
-    if current_count >= target_count:
-        print(
-            f"    - Class '{os.path.basename(class_dir)}' already has {current_count} images (target: {target_count}). Augmentation not required.")
+    This approach ensures that all classes in the training set consist entirely
+    of augmented images, preventing the model from learning biases based on
+    whether an image is augmented or not.
+
+    The process is as follows:
+    1.  Generate `target_count` new images by augmenting the original images.
+        The original images are used as a source pool in a balanced way.
+    2.  Save these new images to the directory.
+    3.  Delete all the original images.
+    4.  The directory is left with exactly `target_count` augmented images.
+    """
+    print(f"\nProcessing class: '{os.path.basename(class_dir)}'")
+    original_image_paths = [os.path.join(class_dir, f) for f in os.listdir(class_dir) if
+                            f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+    current_count = len(original_image_paths)
+    print(f"  - Initial image count: {current_count}")
+
+    if current_count == 0:
+        print("    - Warning: No images found in directory to augment. Skipping.")
         return
 
-    num_to_generate = target_count - current_count
-    print(
-        f"    - Class '{os.path.basename(class_dir)}' has {current_count} images. Generating {num_to_generate} new ones...")
+    if target_count == 0:
+        print("   - Warning: target_count is 0. All original images will be deleted.")
+        for f_path in tqdm(original_image_paths, desc="Deleting all images"):
+            os.remove(f_path)
+        return
 
+    # Define the augmentation pipeline
     augmentation_transform = transforms.Compose([
         transforms.RandomHorizontalFlip(p=0.5),
         transforms.RandomRotation(30),
@@ -31,22 +50,50 @@ def _augment_and_balance_class(class_dir, target_count):
         transforms.RandomAffine(degrees=0, translate=(0.1, 0.1), scale=(0.9, 1.1)),
     ])
 
-    for i in tqdm(range(num_to_generate)):
-        source_image_path = random.choice(image_paths)
-        image = Image.open(source_image_path).convert('RGB')
-        augmented_image = augmentation_transform(image)
+    # --- STAGE 1: Generate a new, fully augmented dataset ---
+    print(f"  - Stage 1: Generating {target_count} new augmented images...")
 
-        base_name = os.path.basename(source_image_path)
-        name, ext = os.path.splitext(base_name)
-        output_filename = f"{name}_aug_{i + 1}{ext}"
-        output_path = os.path.join(class_dir, output_filename)
-        augmented_image.save(output_path)
+    # Create a balanced, shuffled list of source images for augmentation
+    repeats = target_count // current_count
+    remainder = target_count % current_count
+    source_list = original_image_paths * repeats + original_image_paths[:remainder]
+    random.shuffle(source_list)
+
+    new_image_paths = []
+    for i, source_image_path in tqdm(enumerate(source_list), total=target_count, desc="Generating new set"):
+        try:
+            image = Image.open(source_image_path).convert('RGB')
+            augmented_image = augmentation_transform(image)
+
+            # Use a completely new, unique name to avoid any conflicts
+            output_filename = f"aug_set_{random.randint(10000, 99999)}_{i}.jpg"
+            output_path = os.path.join(class_dir, output_filename)
+
+            augmented_image.save(output_path, "JPEG")  # Save as JPEG for consistency
+            new_image_paths.append(output_path)
+        except Exception as e:
+            print(f"\nWarning: Could not process image {source_image_path}. Error: {e}")
+
+    # --- STAGE 2: Delete all original images ---
+    print(f"  - Stage 2: Deleting {len(original_image_paths)} original images...")
+    for f_path in tqdm(original_image_paths, desc="Deleting originals"):
+        try:
+            # This check ensures we don't accidentally delete a new file.
+            # It's unlikely with the new naming but serves as a safeguard.
+            if f_path not in new_image_paths:
+                os.remove(f_path)
+        except OSError as e:
+            print(f"\nWarning: Could not delete file {f_path}. Error: {e}")
+
+    # Final verification
+    final_image_paths = [os.path.join(class_dir, f) for f in os.listdir(class_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+    print(f"  - Final image count: {len(final_image_paths)}")
 
 
 def _copy_files_to_split_dirs(splits, source_class_names, processed_base_dir):
     for split_name, (paths, labels) in splits.items():
         print(f"\nProcessing '{split_name}' split...")
-        for i, path in tqdm(enumerate(paths)):
+        for i, path in tqdm(enumerate(paths), total=len(paths)):
             label = labels[i]
             class_name = source_class_names[label]
 
@@ -58,17 +105,24 @@ def _copy_files_to_split_dirs(splits, source_class_names, processed_base_dir):
 
 
 def _augment_train_set(processed_base_dir, source_class_names, target_aug_count):
-    print("\n--- Augmenting Training Set ---")
+    print("\n--- Augmenting and Balancing Training Set ---")
     train_dir = os.path.join(processed_base_dir, 'train')
     train_class_dirs = [os.path.join(train_dir, name) for name in source_class_names]
 
     if target_aug_count is None:
-        counts = [len(os.listdir(d)) for d in train_class_dirs]
-        target_aug_count = max(counts)
-        print(f"Target count not provided. Balancing to the largest class size: {target_aug_count} images.")
+        counts = [len(os.listdir(d)) for d in train_class_dirs if os.path.isdir(d)]
+        if counts:
+            target_aug_count = max(counts)
+            print(f"Target count not provided. Balancing to the largest class size: {target_aug_count} images.")
+        else:
+            print("Warning: No class directories found to determine target count.")
+            return
 
     for class_dir in train_class_dirs:
-        _augment_and_balance_class(class_dir, target_aug_count)
+        if os.path.isdir(class_dir):
+            _augment_and_balance_class(class_dir, target_aug_count)
+        else:
+            print(f"Warning: Class directory not found, skipping: {class_dir}")
 
 
 def setup_dataset(
@@ -125,6 +179,7 @@ def get_dataloaders(processed_dir='data/processed', batch_size=32):
 
     train_transform = transforms.Compose([
         transforms.Resize((224, 224)),
+        # Random augmentations are still useful during training
         transforms.RandomHorizontalFlip(),
         transforms.RandomRotation(15),
         transforms.ColorJitter(brightness=0.2, contrast=0.2),
@@ -160,9 +215,10 @@ def get_dataloaders(processed_dir='data/processed', batch_size=32):
 if __name__ == '__main__':
     SOURCE_DIRS = ['mac-merged', 'laptops-merged']
     PROCESSED_DIR = 'data/processed'
-    TARGET_AUG_COUNT = 1500
+    TARGET_AUG_COUNT = 1024
     BATCH_SIZE = 32
 
+    # Run setup
     setup_dataset(
         source_base_dir='data',
         processed_base_dir=PROCESSED_DIR,
@@ -171,6 +227,7 @@ if __name__ == '__main__':
     )
 
     try:
+        # Verify dataloaders
         train_loader, val_loader, test_loader = get_dataloaders(
             processed_dir=PROCESSED_DIR,
             batch_size=BATCH_SIZE
