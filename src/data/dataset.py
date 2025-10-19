@@ -1,6 +1,8 @@
 import os
 import shutil
 import random
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from PIL import Image
 
 import torch
@@ -10,21 +12,31 @@ from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 
+def _augment_single_image(args):
+    """
+    Worker function to augment a single image. It's designed to be called
+    by a ProcessPoolExecutor.
+    """
+    source_image_path, class_dir, augmentation_transform, i = args
+    try:
+        image = Image.open(source_image_path).convert('RGB')
+        augmented_image = augmentation_transform(image)
+
+        # Use a completely new, unique name to avoid any conflicts
+        output_filename = f"aug_set_{random.randint(10000, 99999)}_{i}.jpg"
+        output_path = os.path.join(class_dir, output_filename)
+
+        augmented_image.save(output_path, "JPEG")  # Save as JPEG for consistency
+        return output_path
+    except Exception as e:
+        # Return error message instead of path
+        return f"Error processing {source_image_path}: {e}"
+
+
 def _augment_and_balance_class(class_dir, target_count):
     """
     Replaces the original images in a class directory with a new, fully augmented
-    set of images of a specific target count.
-
-    This approach ensures that all classes in the training set consist entirely
-    of augmented images, preventing the model from learning biases based on
-    whether an image is augmented or not.
-
-    The process is as follows:
-    1.  Generate `target_count` new images by augmenting the original images.
-        The original images are used as a source pool in a balanced way.
-    2.  Save these new images to the directory.
-    3.  Delete all the original images.
-    4.  The directory is left with exactly `target_count` augmented images.
+    set of images of a specific target count, processed in parallel.
     """
     print(f"\nProcessing class: '{os.path.basename(class_dir)}'")
     original_image_paths = [os.path.join(class_dir, f) for f in os.listdir(class_dir) if
@@ -42,7 +54,6 @@ def _augment_and_balance_class(class_dir, target_count):
             os.remove(f_path)
         return
 
-    # Define the augmentation pipeline
     augmentation_transform = transforms.Compose([
         transforms.RandomHorizontalFlip(p=0.5),
         transforms.RandomRotation(30),
@@ -50,36 +61,32 @@ def _augment_and_balance_class(class_dir, target_count):
         transforms.RandomAffine(degrees=0, translate=(0.1, 0.1), scale=(0.9, 1.1)),
     ])
 
-    # --- STAGE 1: Generate a new, fully augmented dataset ---
+    # --- STAGE 1: Generate a new, fully augmented dataset in parallel ---
     print(f"  - Stage 1: Generating {target_count} new augmented images...")
-
-    # Create a balanced, shuffled list of source images for augmentation
     repeats = target_count // current_count
     remainder = target_count % current_count
     source_list = original_image_paths * repeats + original_image_paths[:remainder]
     random.shuffle(source_list)
 
     new_image_paths = []
-    for i, source_image_path in tqdm(enumerate(source_list), total=target_count, desc="Generating new set"):
-        try:
-            image = Image.open(source_image_path).convert('RGB')
-            augmented_image = augmentation_transform(image)
+    tasks = [(path, class_dir, augmentation_transform, i) for i, path in enumerate(source_list)]
 
-            # Use a completely new, unique name to avoid any conflicts
-            output_filename = f"aug_set_{random.randint(10000, 99999)}_{i}.jpg"
-            output_path = os.path.join(class_dir, output_filename)
+    num_workers = multiprocessing.cpu_count()
+    print(f"    - Using {num_workers} workers for parallel augmentation...")
 
-            augmented_image.save(output_path, "JPEG")  # Save as JPEG for consistency
-            new_image_paths.append(output_path)
-        except Exception as e:
-            print(f"\nWarning: Could not process image {source_image_path}. Error: {e}")
+    with ProcessPoolExecutor(max_workers=num_workers) as executor:
+        futures = [executor.submit(_augment_single_image, task) for task in tasks]
+        for future in tqdm(as_completed(futures), total=len(tasks), desc="Generating new set"):
+            result = future.result()
+            if isinstance(result, str) and not result.startswith("Error"):
+                new_image_paths.append(result)
+            elif isinstance(result, str):
+                print(f"\n{result}") # Print augmentation errors
 
     # --- STAGE 2: Delete all original images ---
     print(f"  - Stage 2: Deleting {len(original_image_paths)} original images...")
     for f_path in tqdm(original_image_paths, desc="Deleting originals"):
         try:
-            # This check ensures we don't accidentally delete a new file.
-            # It's unlikely with the new naming but serves as a safeguard.
             if f_path not in new_image_paths:
                 os.remove(f_path)
         except OSError as e:
@@ -214,7 +221,7 @@ def get_dataloaders(processed_dir='data/processed', batch_size=32):
 
 if __name__ == '__main__':
     SOURCE_DIRS = ['mac-merged', 'laptops-merged']
-    PROCESSED_DIR = 'data/processed'
+    PROCESSED_DIR = 'data/processed123'
     TARGET_AUG_COUNT = 1024
     BATCH_SIZE = 32
 
