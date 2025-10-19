@@ -41,6 +41,10 @@ def train_one_epoch(model: nn.Module, dataloader: DataLoader, criterion: nn.Modu
         outputs = model(inputs)
         loss = criterion(outputs, labels)
 
+        if L1_LAMBDA > 0:
+            l1_loss = sum(param.abs().sum() for param in model.parameters())
+            loss += L1_LAMBDA * l1_loss
+
         loss.backward()
         optimizer.step()
 
@@ -150,7 +154,10 @@ if __name__ == '__main__':
     model = model.to(device)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.AdamW(model.parameters())
+    L1_LAMBDA = 1e-5  # Coefficient for L1 regularization (set to 0 to disable)
+    L2_LAMBDA = 1e-4  # Coefficient for L2 regularization
+
+    optimizer = optim.AdamW(model.parameters(), weight_decay=L2_LAMBDA)
 
     train_model(
         model=model,
