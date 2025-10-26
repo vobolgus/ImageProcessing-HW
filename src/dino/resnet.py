@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from dino.dataset import load_and_prepare_data as data_main
 from dino.train import train_model, evaluate_best_model, visualize_model, get_params_number
 
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 1e-4
 NUM_EPOCHS = 5
 
 def create_resnet_model(device, num_classes=2):
