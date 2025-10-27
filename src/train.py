@@ -1,21 +1,23 @@
 import os
+import warnings
 from datetime import datetime
 from typing import Tuple, List
 
+import matplotlib.pyplot as plt
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from sklearn.metrics import f1_score
 from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
-from sklearn.metrics import f1_score
 from tqdm import tqdm
-import pandas as pd
-import matplotlib.pyplot as plt
 
-from model.swin import create_swin_classifier
-from model.vit import create_vit_classifier
 from src.data.dataset import setup_dataset, get_dataloaders
-from src.model.resnet import create_resnet_classifier
+from src.model.dino_vit import create_dino_vit_classifier
+from src.model.dino_convnext import create_dino_swin_classifier
+
+warnings.filterwarnings("ignore", message=".*Redirects are currently not supported in Windows or MacOs.*")
 
 
 def get_device() -> torch.device:
@@ -59,6 +61,10 @@ def train_one_epoch(model: nn.Module, dataloader: DataLoader, criterion: nn.Modu
 
     epoch_loss: float = running_loss / total_samples
     epoch_acc: float = correct_predictions / total_samples
+
+    if device.type == "cuda":
+        torch.cuda.synchronize()
+
     return epoch_loss, epoch_acc
 
 
@@ -187,14 +193,15 @@ def train_model(
 SOURCE_DIRS = ['mac-merged', 'laptops-merged']
 PROCESSED_DIR = 'data/processed'
 WEIGHTS_DIR = 'models/weights'
-MODEL_NAME = 'vit16'
+MODEL_NAME = 'convnext'
 
 NUM_CLASSES = 2
 BATCH_SIZE = 32
 NUM_EPOCHS = 50
 TARGET_AUG_COUNT = 1024
-L1_LAMBDA = 1e-5
-L2_LAMBDA = 1e-4
+L1_LAMBDA = 1e-6
+L2_LAMBDA = 1e-5
+LR = 1e-4
 
 if __name__ == '__main__':
     setup_dataset(
@@ -212,12 +219,12 @@ if __name__ == '__main__':
     device = get_device()
     print(f"Selected device: {device}")
 
-    model, _ = create_vit_classifier(num_classes=NUM_CLASSES, pretrained=True, freeze_backbone=False)
+    model = create_dino_swin_classifier(num_classes=NUM_CLASSES)
     model = model.to(device)
 
     criterion = nn.CrossEntropyLoss()
 
-    optimizer = optim.AdamW(model.parameters(), lr=1e-4, weight_decay=L2_LAMBDA)
+    optimizer = optim.AdamW(model.parameters(), lr=LR, weight_decay=L2_LAMBDA)
 
     train_model(
         model=model,

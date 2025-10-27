@@ -1,0 +1,43 @@
+
+
+# Swin
+
+Epoch 4/4
+----------
+100%|██████████| 119/119 [00:40<00:00,  2.96it/s]
+train Loss: 0.0403 Acc: 0.9857
+100%|██████████| 30/30 [00:13<00:00,  2.24it/s]
+val Loss: 0.0082 Acc: 1.0000
+
+Training complete in 4m 27s
+Best Val Acc: 1.000000
+Loaded best model weights from: models/checkpoints\SwinTransformer_1761406498_1_0000.pth
+
+--- Step 6: Evaluating best model on test set ---
+----------
+Starting Final Test Evaluation...
+Final Test Acc with Best Model: 0.9975
+
+
+# VIT
+
+Epoch 4/4
+----------
+100%|██████████| 119/119 [01:11<00:00,  1.68it/s]
+  0%|          | 0/30 [00:00<?, ?it/s]train Loss: 0.0261 Acc: 0.9902
+100%|██████████| 30/30 [00:16<00:00,  1.83it/s]
+val Loss: 0.0029 Acc: 1.0000
+
+Training complete in 7m 20s
+Best Val Acc: 1.000000
+Loaded best model weights from: models/checkpoints\VisionTransformer_1761468293_1_0000.pth
+
+--- Step 6: Evaluating best model on test set ---
+----------
+Starting Final Test Evaluation...
+Final Test Acc with Best Model: 0.9992
+----------
+
+--- Step 7: Visualizing results ---
+
+--- Process finished ---

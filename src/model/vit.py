@@ -5,6 +5,9 @@ import torch.nn as nn
 from PIL import Image
 from torchvision import models
 from torchvision.models import ViT_B_16_Weights  # type: ignore
+from transformers import AutoImageProcessor
+from transformers import AutoImageProcessor, AutoModel
+from transformers import AutoModelForImageClassification
 
 
 def _get_default_weights(pretrained: bool):
@@ -42,9 +45,7 @@ def create_vit_classifier(
                 p.requires_grad = False
     return model, used_weights
 
-
-if __name__ == '__main__':
-
+def load_regular_vit():
     image_path = "../../data/mac-merged/0.png"
     image = Image.open(image_path).convert('RGB')
 
@@ -68,3 +69,7 @@ if __name__ == '__main__':
     print(f"Predicted class: {predicted_class}")
     print(f"Confidence: {confidence:.4f}")
     print(f"Class probabilities: {probabilities.tolist()}")
+
+
+if __name__ == '__main__':
+    load_regular_vit()

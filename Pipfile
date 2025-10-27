@@ -16,6 +16,8 @@ torchaudio = "*"
 pandas = "*"
 matplotlib = "*"
 pyyaml = "*"
+transformers = "*"
+torchao = "*"
 
 [dev-packages]
 
