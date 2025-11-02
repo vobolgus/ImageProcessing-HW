@@ -6,15 +6,21 @@ from typing import List, Optional
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from matplotlib.cbook import STEP_LOOKUP_MAP
+from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 
 # PyTorch Lightning + TorchMetrics
 import pytorch_lightning as pl
 from torchmetrics import Accuracy, F1Score
+from torchvision.datasets import STL10
 
 from src.data.dataset import setup_dataset_realtime, DatasetBundle
 from torchvision import datasets
+
+from src.model.freeze_utils import FreezeStrategy
 from src.model.resnet import create_resnet_classifier
+from src.model.swin import create_swin_classifier
 from src.save_res import save_and_plot_history
 
 warnings.filterwarnings("ignore", message=".*Redirects are currently not supported in Windows or MacOs.*")
@@ -212,20 +218,23 @@ def train_model(
         weights_dir=weights_dir
     )
 
-PROCESSED_DIR = 'data'
+MAC_DATA_ROOT = 'data/MacVsNonMac'
+STP_DATA_ROOT = 'data/STL10'
 WEIGHTS_DIR = 'models/weights'
 MODEL_NAME = 'resnet'
 
 NUM_CLASSES = 2
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 NUM_EPOCHS = 5
 L1_LAMBDA = 1e-6
 L2_LAMBDA = 1e-5
 LR = 1e-4
 
 if __name__ == '__main__':
-    # Build real-time datasets and loaders (on-the-fly augmentation)
-    ds = datasets.ImageFolder(root=PROCESSED_DIR)
+
+    # ds = STL10(root=STP_DATA_ROOT, split="train", download=True)
+    ds = datasets.ImageFolder(root=MAC_DATA_ROOT)
+
     bundle: DatasetBundle = setup_dataset_realtime(
         dataset=ds,
         batch_size=BATCH_SIZE,
@@ -236,7 +245,7 @@ if __name__ == '__main__':
 
     # Derive actual number of classes from data
     effective_num_classes = bundle.num_classes
-    model = create_resnet_classifier(num_classes=effective_num_classes)
+    model = create_swin_classifier(num_classes=effective_num_classes, freeze=FreezeStrategy.PCT70)
     model = model.to(device)
 
     criterion = nn.CrossEntropyLoss()

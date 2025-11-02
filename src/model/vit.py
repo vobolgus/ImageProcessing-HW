@@ -1,13 +1,12 @@
-from typing import Optional, Tuple
+from typing import Optional
 
 import torch
 import torch.nn as nn
 from PIL import Image
 from torchvision import models
 from torchvision.models import ViT_B_16_Weights  # type: ignore
-from transformers import AutoImageProcessor
-from transformers import AutoImageProcessor, AutoModel
-from transformers import AutoModelForImageClassification
+
+from src.model.freeze_utils import FreezeStrategy, apply_freeze
 
 
 def _get_default_weights(pretrained: bool):
@@ -16,16 +15,16 @@ def _get_default_weights(pretrained: bool):
     return None
 
 def load_vit_from_weights(weights_path: str, num_classes: int) -> nn.Module:
-    model, _ = create_vit_classifier(num_classes=num_classes, pretrained=False)
+    model = create_vit_classifier(num_classes=num_classes, pretrained=False)
     model.load_state_dict(torch.load(weights_path, map_location='cpu'))
     return model
 
 def create_vit_classifier(
         num_classes: int = 1000,
         pretrained: bool = True,
-        freeze_backbone: bool = False,
+        freeze: Optional[FreezeStrategy] = None,
         weights: Optional[object] = None,
-) -> Tuple[nn.Module, Optional[object]]:
+) -> nn.Module:
     used_weights = weights if weights is not None else _get_default_weights(pretrained)
 
     model = models.vit_b_16(weights=used_weights)
@@ -37,21 +36,17 @@ def create_vit_classifier(
         if model.heads.head.bias is not None:
             nn.init.zeros_(model.heads.head.bias)
 
-    if freeze_backbone:
-        for name, p in model.named_parameters():
-            if name.startswith("heads.head"):
-                p.requires_grad = True
-            else:
-                p.requires_grad = False
-    return model, used_weights
+    apply_freeze(model, classifier_prefixes=("heads.head",), strategy=freeze)
+    return model
 
 def load_regular_vit():
     image_path = "../../data/mac-merged/0.png"
     image = Image.open(image_path).convert('RGB')
 
-    model, weights = create_vit_classifier(num_classes=2, pretrained=True, freeze_backbone=True)
+    model = create_vit_classifier(num_classes=2, pretrained=True, freeze=FreezeStrategy.LAST)
     model.eval()
 
+    weights = ViT_B_16_Weights.DEFAULT
     preprocess = weights.transforms()
 
     input_tensor = preprocess(image)

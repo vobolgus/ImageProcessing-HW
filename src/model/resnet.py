@@ -1,9 +1,11 @@
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 import torch
 import torch.nn as nn
 from PIL import Image
 from torchvision import models
 from torchvision.models import ResNet50_Weights, ResNet152_Weights  # type: ignore
+
+from src.model.freeze_utils import apply_freeze, FreezeStrategy
 
 
 def _get_default_weights(pretrained: bool):
@@ -12,14 +14,14 @@ def _get_default_weights(pretrained: bool):
     return None
 
 def load_resnet_from_weights(weights_path: str, num_classes: int) -> nn.Module:
-    model, _ = create_resnet_classifier(num_classes=num_classes, pretrained=False)
+    model = create_resnet_classifier(num_classes=num_classes, pretrained=False)
     model.load_state_dict(torch.load(weights_path, map_location='cpu'))
     return model
 
 def create_resnet_classifier(
         num_classes: int = 1000,
         pretrained: bool = True,
-        freeze_backbone: bool = False,
+        freeze: Optional[FreezeStrategy] = None,
         weights: Optional[object] = None,
 ) -> nn.Module:
     used_weights = weights if weights is not None else _get_default_weights(pretrained)
@@ -32,12 +34,7 @@ def create_resnet_classifier(
         if model.fc.bias is not None:
             nn.init.zeros_(model.fc.bias)
 
-    if freeze_backbone:
-        for name, param in model.named_parameters():
-            if name.startswith("fc"):
-                param.requires_grad = True
-            else:
-                param.requires_grad = False
+    apply_freeze(model, classifier_prefixes=("fc",), strategy=freeze)
     return model
 
 
