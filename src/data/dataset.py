@@ -122,6 +122,13 @@ class TransformedSubset(Dataset):
         return image, label
 
 
+class LabelMapper:
+    def __init__(self, mapping: Dict[int, int]):
+        self.mapping: Dict[int, int] = {int(k): int(v) for k, v in mapping.items()}
+
+    def __call__(self, y: int) -> int:
+        return self.mapping.get(int(y), int(y))
+
 def _extract_labels(dataset: Dataset) -> List[int]:
     """Best-effort extraction of numeric labels from an arbitrary torchvision dataset.
 
@@ -252,30 +259,28 @@ def setup_dataset_realtime(
     val_subset = Subset(base, idx_val)
     test_subset = Subset(base, idx_test)
 
-    # Small, fast callable for mapping labels
-    def _map_label(y: int) -> int:
-        return label_map.get(int(y), int(y))
+    label_mapper = LabelMapper(label_map)
 
-    train_ds: Dataset = TransformedSubset(train_subset, transform=train_tf, target_transform=_map_label)
-    val_ds: Dataset = TransformedSubset(val_subset, transform=eval_tf, target_transform=_map_label)
-    test_ds: Dataset = TransformedSubset(test_subset, transform=eval_tf, target_transform=_map_label)
+    train_ds: Dataset = TransformedSubset(train_subset, transform=train_tf, target_transform=label_mapper)
+    val_ds: Dataset = TransformedSubset(val_subset, transform=eval_tf, target_transform=label_mapper)
+    test_ds: Dataset = TransformedSubset(test_subset, transform=eval_tf, target_transform=label_mapper)
 
     # Class weights from training labels
     y_train_mapped: List[int] = [label_map[int(y)] for y in y_train]
     class_counts, class_weights = _compute_class_weights(y_train_mapped, num_classes)
 
-    # Loaders
+    effective_persistent = persistent_workers and (num_workers > 0)
     train_loader = DataLoader(
         train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers,
-        pin_memory=pin_memory, persistent_workers=persistent_workers
+        pin_memory=pin_memory, persistent_workers=effective_persistent
     )
     val_loader = DataLoader(
         val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers,
-        pin_memory=pin_memory, persistent_workers=persistent_workers
+        pin_memory=pin_memory, persistent_workers=effective_persistent
     )
     test_loader = DataLoader(
         test_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers,
-        pin_memory=pin_memory, persistent_workers=persistent_workers
+        pin_memory=pin_memory, persistent_workers=effective_persistent
     )
 
     # Build idx_to_class directly from the compact class order

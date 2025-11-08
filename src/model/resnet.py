@@ -42,7 +42,7 @@ if __name__ == '__main__':
     image_path = "../../data/mac-merged/0.png"
     image = Image.open(image_path).convert('RGB')
 
-    model, weights = create_resnet_classifier(num_classes=2, pretrained=True, freeze_backbone=True)
+    model, weights = create_resnet_classifier(num_classes=2, pretrained=True)
     model.eval()
 
     preprocess = weights.transforms()

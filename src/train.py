@@ -225,10 +225,11 @@ MODEL_NAME = 'resnet'
 
 NUM_CLASSES = 2
 BATCH_SIZE = 64
-NUM_EPOCHS = 5
+NUM_EPOCHS = 10
 L1_LAMBDA = 1e-6
 L2_LAMBDA = 1e-5
 LR = 1e-4
+FREEZE = FreezeStrategy.PCT70
 
 if __name__ == '__main__':
     # ds = datasets.ImageFolder(root=MAC_DATA_ROOT)
@@ -245,7 +246,7 @@ if __name__ == '__main__':
 
     # Derive actual number of classes from data
     effective_num_classes = bundle.num_classes
-    model = create_swin_classifier(num_classes=effective_num_classes, freeze=FreezeStrategy.PCT70)
+    model = create_swin_classifier(num_classes=effective_num_classes, freeze=FREEZE)
     model = model.to(device)
 
     criterion = nn.CrossEntropyLoss()

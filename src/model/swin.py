@@ -13,7 +13,8 @@ def _get_default_weights(pretrained: bool):
     return None
 
 def load_swin_from_weights(weights_path: str, num_classes: int) -> nn.Module:
-    model, _ = create_swin_classifier(num_classes=num_classes, pretrained=False)
+    # create_swin_classifier returns a single nn.Module; do not try to unpack
+    model = create_swin_classifier(num_classes=num_classes, pretrained=False)
     model.load_state_dict(torch.load(weights_path, map_location='cpu'))
     return model
 
@@ -43,9 +44,10 @@ if __name__ == '__main__':
     image_path = "../../data/mac-merged/0.png"
     image = Image.open(image_path).convert('RGB')
 
-    model, weights = create_swin_classifier(num_classes=2, pretrained=True, freeze=FreezeStrategy.LAST)
+    model = create_swin_classifier(num_classes=2, pretrained=True, freeze=FreezeStrategy.LAST)
     model.eval()
 
+    weights = Swin_T_Weights.DEFAULT
     preprocess = weights.transforms()
 
     input_tensor = preprocess(image)

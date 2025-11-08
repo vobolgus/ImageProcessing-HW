@@ -1,6 +1,6 @@
 import os
 import re
-from typing import Dict, Tuple, Callable
+from typing import Dict, Tuple, Callable, List, Optional
 
 import pandas as pd
 import torch
@@ -12,14 +12,14 @@ from tqdm import tqdm
 from src.model.swin import load_swin_from_weights
 from src.model.vit import load_vit_from_weights
 from src.model.resnet import load_resnet_from_weights
-from src.data.dataset import setup_dataset_realtime, DatasetBundle
+from src.data.dataset import setup_dataset_realtime, DatasetBundle, get_STL_dataset
 from torchvision import datasets
 
 WEIGHTS_DIR = 'models/weights'
-PROCESSED_DIR = 'data'  # read directly from source; no offline augmentation
+DATASET_NAME = 'STL10'
+DATA_ROOT = 'data/STL10'  # default dataset root
 RESULTS_CSV_PATH = 'test_results.csv'
-BATCH_SIZE = 32
-NUM_CLASSES = 2
+BATCH_SIZE = 64
 
 
 def get_device() -> torch.device:
@@ -33,23 +33,29 @@ def get_device() -> torch.device:
     return torch.device("cpu")
 
 
-def find_best_models(weights_dir: str) -> Dict[str, Dict[str, any]]:
+def find_best_models(weights_dir: str, include_prefixes: Optional[List[str]] = None) -> Dict[str, Dict[str, any]]:
     best_models = {}
     pattern = re.compile(r"^(.*?)-\d{8}_\d{6}-f1_([\d.]+)\.pth$")
 
-    print(f"Searching for best models in {weights_dir}...")
-    for filename in os.listdir(weights_dir):
-        if filename.endswith(".pth"):
+    print(f"Searching for best models in {weights_dir} (recursively)...")
+    for root, _, files in os.walk(weights_dir):
+        for filename in files:
+            if not filename.endswith(".pth"):
+                continue
             match = pattern.match(filename)
-            if match:
-                model_name, f1_str = match.groups()
-                f1_score_val = float(f1_str)
+            if not match:
+                continue
+            model_name, f1_str = match.groups()
+            if include_prefixes and not any(model_name.startswith(p) for p in include_prefixes):
+                continue
+            f1_score_val = float(f1_str)
 
-                if model_name not in best_models or f1_score_val > best_models[model_name]['best_val_f1']:
-                    best_models[model_name] = {
-                        'path': os.path.join(weights_dir, filename),
-                        'best_val_f1': f1_score_val
-                    }
+            full_path = os.path.join(root, filename)
+            if model_name not in best_models or f1_score_val > best_models[model_name]['best_val_f1']:
+                best_models[model_name] = {
+                    'path': full_path,
+                    'best_val_f1': f1_score_val
+                }
 
     print(f"Found {len(best_models)} unique models.")
     for name, data in best_models.items():
@@ -96,23 +102,27 @@ def test_model(model: nn.Module, dataloader: DataLoader, device: torch.device) -
     return test_acc, test_f1
 
 
-def main():
+def run_tests(
+        bundle: DatasetBundle,
+        weights_dir: str = WEIGHTS_DIR,
+        results_csv_path: str = RESULTS_CSV_PATH,
+        include_prefixes: Optional[List[str]] = None,
+):
     device = get_device()
 
-    best_models_info = find_best_models(WEIGHTS_DIR)
+    best_models_info = find_best_models(weights_dir, include_prefixes=include_prefixes)
     if not best_models_info:
         print("No suitable weight files (.pth) found in the models/weights directory.")
         print("Ensure that the files are in the format 'model-name-DATE_TIME-f1_SCORE.pth'")
-        return
+        return None
 
-    # Build datasets/loaders in real-time mode and use test loader
     try:
-        ds = datasets.ImageFolder(root=PROCESSED_DIR)
-        bundle: DatasetBundle = setup_dataset_realtime(dataset=ds, batch_size=BATCH_SIZE)
+        print("Using provided dataset bundle for testing (preferred path).")
         test_loader = bundle.test_loader
+        effective_num_classes = bundle.num_classes
     except Exception as e:
-        print(f"Failed to prepare dataset: {e}")
-        return
+        print(f"Failed to obtain dataset/test loader: {e}")
+        return None
 
     results = []
     for model_name, info in best_models_info.items():
@@ -120,7 +130,7 @@ def main():
         try:
             model_loader = get_model_loader(model_name)
 
-            model = model_loader(weights_path=info['path'], num_classes=NUM_CLASSES)
+            model = model_loader(weights_path=info['path'], num_classes=effective_num_classes)
             print(f"Model created and weights loaded from: {info['path']}")
 
             test_acc, test_f1 = test_model(model, test_loader, device)
@@ -144,12 +154,21 @@ def main():
         pd.set_option('display.max_colwidth', None)
         print(results_df.to_string(index=False))
 
-        results_df.to_csv(RESULTS_CSV_PATH, index=False)
-        print(f"\nResults saved to file: {RESULTS_CSV_PATH}")
+        results_df.to_csv(results_csv_path, index=False)
+        print(f"\nResults saved to file: {results_csv_path}")
+        return results_df
     else:
         print("\nNo models were tested.")
+        return None
+
+
+def main():
+    run_tests(
+        weights_dir=WEIGHTS_DIR,
+        results_csv_path=RESULTS_CSV_PATH,
+        include_prefixes=None,
+    )
 
 
 if __name__ == '__main__':
     main()
-
