@@ -97,7 +97,6 @@ def plot_hists(images1: np.ndarray, images2: Optional[np.ndarray] = None) -> Non
 
 
 def prepare_data() -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    global batch_size
     images_radiopedia, masks_radiopedia, images_medseg, masks_medseg, test_images_medseg = load_data()
     visualize(images_radiopedia[30:], masks_radiopedia[30:])
 
@@ -121,7 +120,7 @@ def prepare_data() -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.n
     val_images = images_medseg[val_indexes]
     val_masks = masks_medseg_recover[val_indexes]
 
-    batch_size = len(val_masks)
+    # batch_size = len(val_masks)
 
     del masks_medseg_recover
     del masks_radiopedia_recover
