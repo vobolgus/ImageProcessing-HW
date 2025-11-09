@@ -85,3 +85,4 @@ docs/_build/
 dmypy.json
 
 # End Standard Python Ignoring #
+/covid-segmantation/data/
