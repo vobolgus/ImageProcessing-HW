@@ -89,11 +89,17 @@ class CovidSegmenter(pl.LightningModule):
         self.log(f'{stage}_loss', loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
 
         preds = torch.argmax(output, dim=1)
-        
-        self.val_miou.update(preds, mask)
-        self.val_acc.update(preds, mask)
-        self.log(f'{stage}_miou', self.val_miou, on_step=False, on_epoch=True, prog_bar=True)
-        self.log(f'{stage}_acc', self.val_acc, on_step=False, on_epoch=True, prog_bar=True)
+
+        if stage == 'train':
+            self.train_miou.update(preds, mask)
+            self.train_acc.update(preds, mask)
+            self.log(f'{stage}_miou', self.train_miou, on_step=False, on_epoch=True, prog_bar=True)
+            self.log(f'{stage}_acc', self.train_acc, on_step=False, on_epoch=True, prog_bar=True)
+        else:
+            self.val_miou.update(preds, mask)
+            self.val_acc.update(preds, mask)
+            self.log(f'{stage}_miou', self.val_miou, on_step=False, on_epoch=True, prog_bar=True)
+            self.log(f'{stage}_acc', self.val_acc, on_step=False, on_epoch=True, prog_bar=True)
 
         return loss
 
