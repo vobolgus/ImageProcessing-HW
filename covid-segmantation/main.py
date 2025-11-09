@@ -21,13 +21,16 @@ from test import run_test_predictions
 SOURCE_SIZE: int = 512
 TARGET_SIZE: int = SOURCE_SIZE
 MAX_LR: float = 1e-4
-EPOCHS: int = 100
 WEIGHT_DECAY: float = 1e-5
 L1_REG: float = 1e-6
-BATCH_SIZE: int = 64
+BATCH_SIZE: int = 16
 
-FINETUNE_EPOCHS: int = 25
-FINETUNE_PATIENCE: int = 8
+
+EPOCHS: int = 70
+PATIENCE: int = 20
+
+FINETUNE_EPOCHS: int = 100
+FINETUNE_PATIENCE: int = 30
 
 if __name__ == '__main__':
     torch.set_float32_matmul_precision('high')
@@ -52,7 +55,7 @@ if __name__ == '__main__':
 
     early_stopping_callback = EarlyStopping(
         monitor='val_miou',
-        patience=25,
+        patience=PATIENCE,
         mode='max'
     )
 
@@ -77,31 +80,31 @@ if __name__ == '__main__':
     )
     trainer.fit(model, datamodule=datamodule)
 
-    # print("Starting finetune on medseg...")
-    # datamodule = CovidDataModule(
-    #     batch_size=BATCH_SIZE,
-    #     source_size=SOURCE_SIZE,
-    #     target_size=TARGET_SIZE,
-    #     use_radiopedia=False
-    # )
-    #
-    # finetune_early_stopping_callback = EarlyStopping(
-    #     monitor='val_miou',
-    #     patience=FINETUNE_PATIENCE,
-    #     mode='max',
-    #     verbose=True
-    # )
-    #
-    # finetune_trainer = pl.Trainer(
-    #     accelerator='mps',
-    #     devices=1,
-    #     max_epochs=FINETUNE_EPOCHS,
-    #     callbacks=[checkpoint_callback, finetune_early_stopping_callback],
-    #     logger=csv_logger,
-    #     enable_progress_bar=True,
-    # )
-    #
-    # finetune_trainer.fit(model, datamodule=datamodule)
+    print("Starting finetune on medseg...")
+    datamodule = CovidDataModule(
+        batch_size=BATCH_SIZE,
+        source_size=SOURCE_SIZE,
+        target_size=TARGET_SIZE,
+        use_radiopedia=False
+    )
+
+    finetune_early_stopping_callback = EarlyStopping(
+        monitor='val_miou',
+        patience=FINETUNE_PATIENCE,
+        mode='max',
+        verbose=True
+    )
+
+    finetune_trainer = pl.Trainer(
+        accelerator='mps',
+        devices=1,
+        max_epochs=FINETUNE_EPOCHS,
+        callbacks=[checkpoint_callback, finetune_early_stopping_callback],
+        logger=csv_logger,
+        enable_progress_bar=True,
+    )
+
+    finetune_trainer.fit(model, datamodule=datamodule)
 
     print("Training complete.")
     print(f"Best model saved at: {checkpoint_callback.best_model_path}")

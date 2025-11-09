@@ -4,6 +4,7 @@ import albumentations
 import cv2
 import os
 import albumentations as A
+import matplotlib.pyplot as plt
 
 from data import prepare_data
 from dataset import Dataset
@@ -37,11 +38,11 @@ class CovidDataModule(pl.LightningDataModule):
                 p=1.0
             ),
             albumentations.Rotate(limit=360, p=0.9, border_mode=cv2.BORDER_REPLICATE),
-            albumentations.RandomSizedCrop(
-                (int(self.source_size * 0.75), self.source_size),
-                (self.target_size, self.target_size),
-                interpolation=cv2.INTER_NEAREST
-            ),
+            # albumentations.RandomSizedCrop(
+            #     (int(self.source_size * 0.75), self.source_size),
+            #     (self.target_size, self.target_size),
+            #     interpolation=cv2.INTER_NEAREST
+            # ),
             albumentations.HorizontalFlip(p=0.5),
             albumentations.RandomBrightnessContrast(p=0.5),
 
@@ -83,3 +84,32 @@ class CovidDataModule(pl.LightningDataModule):
             num_workers=self.num_workers,
             persistent_workers=True
         )
+
+    def plot_sample_batch(self):
+        batch = next(iter(self.train_dataloader()))
+        images, masks = batch
+
+        plt.figure(figsize=(16, 8))
+        for i in range(min(4, len(images))):
+            plt.subplot(2, 4, i + 1)
+            plt.imshow(images[i][0].numpy(), cmap='gray')
+            plt.title(f'Image {i + 1}')
+            plt.axis('off')
+
+            plt.subplot(2, 4, i + 5)
+            # FIX: Removed the [0] index from masks[i]
+            plt.imshow(masks[i].numpy(), cmap='gray')
+            plt.title(f'Mask {i + 1}')
+            plt.axis('off')
+        plt.tight_layout()
+        plt.show()
+
+if __name__ == '__main__':
+    data = CovidDataModule(
+        batch_size=32,
+        source_size=512,
+        target_size=512,
+        use_radiopedia=False
+    )
+    data.setup("fit")
+    data.plot_sample_batch()

@@ -194,7 +194,7 @@ def create_efficientnet_model(num_classes: int,
     print("Creating 2D Unet model with efficientnet backbone...")
 
     model = smp.UnetPlusPlus(
-        encoder_name="efficientnet-b7",
+        encoder_name="efficientnet-b2",
         encoder_weights="imagenet",
         in_channels=1,
         classes=num_classes,
@@ -219,7 +219,7 @@ class CovidSegmenter(pl.LightningModule):
         self.save_hyperparameters()
         self.hparams.l1_lambda = l1_lambda
 
-        self.model = create_efficientnet_model(num_classes, freeze_strategy, self.device)
+        self.model = create_fpn_with_resnet(num_classes, freeze_strategy, self.device)
         self.model.to(self.device)
 
         self.criterion = nn.CrossEntropyLoss()
