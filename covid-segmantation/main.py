@@ -112,4 +112,4 @@ if __name__ == '__main__':
     else:
         print("Could not find log directory, skipping plot generation.")
 
-    run_test_predictions(checkpoint_callback, datamodule, device, TARGET_SIZE)
+    run_test_predictions(checkpoint_callback, datamodule, device, TARGET_SIZE, checkpoint_callback.best_model_score.item())

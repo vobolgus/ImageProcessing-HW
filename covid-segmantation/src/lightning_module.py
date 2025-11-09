@@ -142,6 +142,43 @@ def create_unet_with_resnet(num_classes: int,
     return model
 
 
+def create_swin_model(num_classes: int,
+                      freeze_strategy: FreezeStrategy = FreezeStrategy.PCT70,
+                      _device: torch.device = torch.device("cpu")):
+    print("Creating 2D Unet model with Swin Transformer backbone...")
+
+    model = smp.Unet(
+        encoder_name="tu-swin_tiny_patch4_window7_224",
+        encoder_weights="imagenet",
+        in_channels=1,
+        classes=num_classes,
+    )
+
+    print(f"Applying freeze strategy: {freeze_strategy.name}")
+    classifier_prefixes = ('decoder.', 'segmentation_head.')
+    apply_freeze(model, classifier_prefixes, strategy=freeze_strategy)
+
+    return model
+
+def create_efficientnet_model(num_classes: int,
+                      freeze_strategy: FreezeStrategy = FreezeStrategy.NO,
+                      _device: torch.device = torch.device("cpu")):
+    print("Creating 2D Unet model with efficientnet backbone...")
+
+    model = smp.Unet(
+        encoder_name="efficientnet-b7",
+        encoder_weights="imagenet",
+        in_channels=1,
+        classes=num_classes,
+    )
+
+    print(f"Applying freeze strategy: {freeze_strategy.name}")
+    classifier_prefixes = ('decoder.', 'segmentation_head.')
+    apply_freeze(model, classifier_prefixes, strategy=freeze_strategy)
+
+    return model
+
+
 class CovidSegmenter(pl.LightningModule):
     def __init__(self,
                  num_classes=4,
@@ -154,7 +191,7 @@ class CovidSegmenter(pl.LightningModule):
         self.save_hyperparameters()
         self.hparams.l1_lambda = l1_lambda
 
-        self.model = create_unet_with_resnet(num_classes, freeze_strategy, self.device)
+        self.model = create_efficientnet_model(num_classes, freeze_strategy, self.device)
         self.model.to(self.device)
 
         self.criterion = nn.CrossEntropyLoss()

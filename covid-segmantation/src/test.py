@@ -1,3 +1,6 @@
+import os
+from typing import Optional
+
 import numpy as np
 import pandas as pd
 import scipy
@@ -30,7 +33,7 @@ def predict_single_image(model, image_np, device, val_augs):
     return output.squeeze(0).cpu().numpy()
 
 
-def run_test_predictions(checkpoint_callback, datamodule, device, target_size):
+def run_test_predictions(checkpoint_callback, datamodule, device, target_size, miou_val: Optional[float]):
     print("\nStarting test predictions...")
 
     best_model_path = checkpoint_callback.best_model_path
@@ -72,5 +75,8 @@ def run_test_predictions(checkpoint_callback, datamodule, device, target_size):
         ),
         columns=['Id', 'Predicted']
     ).set_index('Id')
-    frame.to_csv('sub.csv')
+    if miou_val is not None:
+        frame.to_csv(f'sub-{miou_val}.csv')
+    else:
+        frame.to_csv('sub.csv')
     print("Submission file created successfully.")
