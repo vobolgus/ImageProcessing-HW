@@ -65,14 +65,96 @@ def create_unet_with_densenet121(num_classes: int,
     return model
 
 
+def adapt_radimagenet_weights_resnet(device):
+    print("Downloading RadImageNet ResNet-50 weights...")
+    weights_path = hf_hub_download(
+        repo_id="Lab-Rasool/RadImageNet",
+        filename="ResNet50.pt"
+    )
+
+    model_or_weights = torch.load(weights_path, map_location=torch.device('cpu'))
+
+    if isinstance(model_or_weights, nn.Module):
+        state_dict = model_or_weights.state_dict()
+    else:
+        state_dict = model_or_weights
+
+    first_conv_key = 'backbone.0.weight'
+
+    if first_conv_key not in state_dict:
+        print(f"ERROR: Could not find key '{first_conv_key}' in state_dict.")
+        print("Available keys:", state_dict.keys())
+        raise KeyError(f"Weight adaptation failed: Key '{first_conv_key}' not found.")
+
+    conv1_weights_3ch = state_dict[first_conv_key]
+    conv1_weights_1ch = conv1_weights_3ch.sum(dim=1, keepdim=True)
+    state_dict[first_conv_key] = conv1_weights_1ch
+    print("Weights adapted for 1-channel input (backbone.0.weight).")
+
+    new_state_dict = OrderedDict()
+    for key, value in state_dict.items():
+        new_key = key
+        if key.startswith('backbone.0.'):
+            new_key = key.replace('backbone.0.', 'conv1.', 1)
+        elif key.startswith('backbone.1.'):
+            new_key = key.replace('backbone.1.', 'bn1.', 1)
+        elif key.startswith('backbone.4.'):
+            new_key = key.replace('backbone.4.', 'layer1.', 1)
+        elif key.startswith('backbone.5.'):
+            new_key = key.replace('backbone.5.', 'layer2.', 1)
+        elif key.startswith('backbone.6.'):
+            new_key = key.replace('backbone.6.', 'layer3.', 1)
+        elif key.startswith('backbone.7.'):
+            new_key = key.replace('backbone.7.', 'layer4.', 1)
+
+        new_state_dict[new_key] = value
+
+    print("State_dict keys remapped for smp encoder (e.g., 'backbone.0' -> 'conv1', 'backbone.4' -> 'layer1').")
+    return new_state_dict
+
+
+def create_unet_with_resnet(num_classes: int,
+                            freeze_strategy: FreezeStrategy = FreezeStrategy.PCT70,
+                            device: torch.device = torch.device("cpu")):
+    print("Creating 2D Unet model with resnet50 backbone...")
+    model = smp.Unet(
+        encoder_name="resnet50",
+        encoder_weights=None,
+        in_channels=1,
+        classes=num_classes,
+    )
+
+    adapted_weights = adapt_radimagenet_weights_resnet(device)
+    try:
+        model.encoder.load_state_dict(adapted_weights)
+        print("Successfully loaded RadImageNet weights into 1-channel ResNet-50 encoder.")
+    except Exception as e:
+        print("\n--- ERROR loading state_dict into ResNet-50 encoder ---")
+        print("This often happens if the keys don't match.")
+        print(e)
+        raise e
+
+    if freeze_strategy != FreezeStrategy.NO:
+        print(f"Applying freeze strategy: {freeze_strategy.name}")
+        classifier_prefixes = ('decoder.', 'segmentation_head.')
+        apply_freeze(model, classifier_prefixes, strategy=freeze_strategy)
+
+    return model
+
+
 class CovidSegmenter(pl.LightningModule):
-    def __init__(self, num_classes=4, max_lr=1e-3, weight_decay=1e-4,
-                 freeze_strategy: FreezeStrategy = FreezeStrategy.PCT70):
+    def __init__(self,
+                 num_classes=4,
+                 max_lr=1e-3,
+                 weight_decay=1e-4,
+                 freeze_strategy: FreezeStrategy = FreezeStrategy.PCT70,
+                 l1_lambda: float = 1e-5,
+                 ):
         super().__init__()
         self.save_hyperparameters()
-        self.hparams.l1_lambda = 1e-5
+        self.hparams.l1_lambda = l1_lambda
 
-        self.model = create_unet_with_densenet121(num_classes, freeze_strategy, self.device)
+        self.model = create_unet_with_resnet(num_classes, freeze_strategy, self.device)
         self.model.to(self.device)
 
         self.criterion = nn.CrossEntropyLoss()
@@ -150,12 +232,10 @@ class CovidSegmenter(pl.LightningModule):
 
 
 if __name__ == '__main__':
-
     device_str = "mps" if torch.backends.mps.is_available() else "cpu"
     print(f"Using device: {device_str}")
 
     print("\n--- Attempting to initialize CovidSegmenter ---")
-
 
     model = CovidSegmenter(
         num_classes=4,
