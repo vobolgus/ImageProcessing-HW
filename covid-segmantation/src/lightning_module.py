@@ -214,14 +214,20 @@ class CovidSegmenter(pl.LightningModule):
                  weight_decay=1e-4,
                  freeze_strategy: FreezeStrategy = FreezeStrategy.PCT70,
                  l1_lambda: float = 1e-5,
+                 class_weights=None,
                  ):
         super().__init__()
         self.save_hyperparameters()
         self.hparams.l1_lambda = l1_lambda
+        # Keep a python-list for hparams serialization friendliness; convert to tensor later
+        self._class_weights_list = (
+            class_weights.tolist() if hasattr(class_weights, 'tolist') else class_weights
+        )
 
         self.model = create_fpn_with_resnet(num_classes, freeze_strategy, self.device)
         self.model.to(self.device)
 
+        # Initialize criterion without weights; will (optionally) be updated in on_fit_start
         self.criterion = nn.CrossEntropyLoss()
 
         self.train_miou = torchmetrics.JaccardIndex(task="multiclass", num_classes=num_classes, average='macro')
@@ -294,6 +300,45 @@ class CovidSegmenter(pl.LightningModule):
                 "interval": "step",
             },
         }
+
+    def on_fit_start(self) -> None:
+        """Attach class weights to the loss if provided or available from the DataModule.
+
+        Note: AdamW optimizer itself does not support class weights; class imbalance should be
+        handled in the loss function (e.g., CrossEntropyLoss(weight=...)). This hook retrieves
+        weights either from the constructor argument or from the DataModule (if it exposes
+        `class_weights`).
+        """
+        weights_tensor = None
+
+        # 1) From constructor
+        if self._class_weights_list is not None:
+            try:
+                weights_tensor = torch.as_tensor(self._class_weights_list, dtype=torch.float32, device=self.device)
+            except Exception:
+                # Fallback to CPU then move
+                weights_tensor = torch.as_tensor(self._class_weights_list, dtype=torch.float32)
+        # 2) From DataModule if not passed explicitly
+        elif self.trainer is not None and getattr(self.trainer, 'datamodule', None) is not None:
+            dm = self.trainer.datamodule
+            if hasattr(dm, 'class_weights') and dm.class_weights is not None:
+                cw = dm.class_weights
+                # Accept list, numpy array, or tensor
+                try:
+                    weights_tensor = torch.as_tensor(cw, dtype=torch.float32, device=self.device)
+                except Exception:
+                    weights_tensor = torch.as_tensor(cw, dtype=torch.float32)
+
+        if weights_tensor is not None:
+            # Rebuild criterion with weights on the correct device
+            self.criterion = nn.CrossEntropyLoss(weight=weights_tensor)
+            try:
+                # Helpful console output for verification
+                print(f"Using class weights for loss: {weights_tensor.detach().cpu().numpy().round(4).tolist()}")
+            except Exception:
+                pass
+        else:
+            print("No class weights provided; using unweighted CrossEntropyLoss.")
 
 
 if __name__ == '__main__':

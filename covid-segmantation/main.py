@@ -20,7 +20,7 @@ from test import run_test_predictions
 
 SOURCE_SIZE: int = 512
 TARGET_SIZE: int = SOURCE_SIZE
-MAX_LR: float = 1e-4
+MAX_LR: float = 5e-5
 WEIGHT_DECAY: float = 1e-5
 L1_REG: float = 1e-6
 BATCH_SIZE: int = 16
@@ -36,6 +36,13 @@ if __name__ == '__main__':
     torch.set_float32_matmul_precision('high')
 
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+
+    datamodule = CovidDataModule(
+        batch_size=BATCH_SIZE,
+        source_size=SOURCE_SIZE,
+        target_size=TARGET_SIZE,
+        use_radiopedia=True
+    )
 
     model = CovidSegmenter(
         num_classes=4,
@@ -72,12 +79,6 @@ if __name__ == '__main__':
 
     print("Starting PyTorch Lightning training...")
     print(f"Using full dataset with radiopedia")
-    datamodule = CovidDataModule(
-        batch_size=BATCH_SIZE,
-        source_size=SOURCE_SIZE,
-        target_size=TARGET_SIZE,
-        use_radiopedia=True
-    )
     trainer.fit(model, datamodule=datamodule)
 
     print("Starting finetune on medseg...")
@@ -99,7 +100,7 @@ if __name__ == '__main__':
         accelerator='mps',
         devices=1,
         max_epochs=FINETUNE_EPOCHS,
-        callbacks=[checkpoint_callback, finetune_early_stopping_callback],
+        callbacks=[checkpoint_callback],
         logger=csv_logger,
         enable_progress_bar=True,
     )

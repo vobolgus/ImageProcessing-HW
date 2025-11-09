@@ -5,6 +5,7 @@ import cv2
 import os
 import albumentations as A
 import matplotlib.pyplot as plt
+import numpy as np
 
 from data import prepare_data
 from dataset import Dataset
@@ -18,6 +19,8 @@ class CovidDataModule(pl.LightningDataModule):
         self.target_size = target_size
         self.val_batch_size = batch_size
         self.use_radiopedia = use_radiopedia
+        # Will be populated in setup() based on training masks
+        self.class_weights = None
         try:
             self.num_workers = os.cpu_count() // 2
         except Exception:
@@ -66,6 +69,21 @@ class CovidDataModule(pl.LightningDataModule):
         if stage == 'fit' or stage is None:
             self.train_dataset = Dataset(self.train_images, self.train_masks, self.train_augs)
             self.val_dataset = Dataset(self.val_images, self.val_masks, self.val_augs)
+
+        # Compute class weights from train masks for imbalance handling
+        try:
+            flat = self.train_masks.reshape(-1).astype(np.int64)
+            # Ensure labels start from 0 and are integers
+            max_label = int(flat.max()) if flat.size > 0 else 0
+            counts = np.bincount(flat, minlength=max_label + 1).astype(np.float64)
+            counts[counts == 0] = 1.0  # avoid division by zero for missing classes
+            inv_freq = counts.sum() / counts
+            # Normalize weights to sum to number of classes (stable scale)
+            inv_freq *= (len(inv_freq) / inv_freq.sum())
+            self.class_weights = inv_freq.tolist()
+            print(f"[DataModule] Computed class weights: {[round(x, 4) for x in self.class_weights]}")
+        except Exception as e:
+            print(f"[DataModule] Could not compute class weights automatically: {e}")
 
     def train_dataloader(self):
         return DataLoader(
