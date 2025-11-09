@@ -5,6 +5,7 @@ import numpy
 import numpy as np
 import torch
 from matplotlib import pyplot, pyplot as plt
+from sympy.logic.boolalg import Boolean
 
 
 def load_data() -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -32,11 +33,11 @@ def load_data() -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndar
 
 
 def visualize(
-    image_batch: Union[np.ndarray, torch.Tensor],
-    mask_batch: Optional[Union[np.ndarray, torch.Tensor]] = None,
-    pred_batch: Optional[Union[np.ndarray, torch.Tensor]] = None,
-    num_samples: int = 8,
-    hot_encode: bool = True,
+        image_batch: Union[np.ndarray, torch.Tensor],
+        mask_batch: Optional[Union[np.ndarray, torch.Tensor]] = None,
+        pred_batch: Optional[Union[np.ndarray, torch.Tensor]] = None,
+        num_samples: int = 8,
+        hot_encode: bool = True,
 ) -> None:
     num_classes = mask_batch.shape[-1] if mask_batch is not None else 0
     fix, ax = plt.subplots(num_classes + 1, num_samples, figsize=(num_samples * 2, (num_classes + 1) * 2))
@@ -77,7 +78,7 @@ def onehot_to_mask(mask: np.ndarray, palette: Sequence[Sequence[int]]) -> np.nda
 
 
 def preprocess_images(
-    images_arr: np.ndarray, mean_std: Optional[Tuple[float, float]] = None
+        images_arr: np.ndarray, mean_std: Optional[Tuple[float, float]] = None
 ) -> Tuple[np.ndarray, Tuple[float, float]]:
     images_arr[images_arr > 500] = 500
     images_arr[images_arr < -1500] = -1500
@@ -96,7 +97,7 @@ def plot_hists(images1: np.ndarray, images2: Optional[np.ndarray] = None) -> Non
     plt.show()
 
 
-def prepare_data() -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def prepare_data(use_radiopedia: bool = False) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     images_radiopedia, masks_radiopedia, images_medseg, masks_medseg, test_images_medseg = load_data()
     visualize(images_radiopedia[30:], masks_radiopedia[30:])
 
@@ -115,10 +116,13 @@ def prepare_data() -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.n
     plot_hists(images_medseg, images_radiopedia)
 
     val_indexes, train_indexes = list(range(24)), list(range(24, 100))
-    # train_images = np.concatenate((images_medseg[train_indexes], images_radiopedia))
-    # train_masks = np.concatenate((masks_medseg_recover[train_indexes], masks_radiopedia_recover))
-    train_images = images_medseg[train_indexes]
-    train_masks = masks_medseg_recover[train_indexes]
+    if use_radiopedia:
+        train_images = np.concatenate((images_medseg[train_indexes], images_radiopedia))
+        train_masks = np.concatenate((masks_medseg_recover[train_indexes], masks_radiopedia_recover))
+    else:
+        train_images = images_medseg[train_indexes]
+        train_masks = masks_medseg_recover[train_indexes]
+
     val_images = images_medseg[val_indexes]
     val_masks = masks_medseg_recover[val_indexes]
 

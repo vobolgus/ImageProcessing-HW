@@ -10,12 +10,13 @@ from dataset import Dataset
 
 
 class CovidDataModule(pl.LightningDataModule):
-    def __init__(self, batch_size=24, source_size=512, target_size=256):
+    def __init__(self, batch_size=24, source_size=512, target_size=256, use_radiopedia: bool = False):
         super().__init__()
         self.train_batch_size = batch_size
         self.source_size = source_size
         self.target_size = target_size
         self.val_batch_size = batch_size
+        self.use_radiopedia = use_radiopedia
         try:
             self.num_workers = os.cpu_count() // 2
         except Exception:
@@ -28,7 +29,7 @@ class CovidDataModule(pl.LightningDataModule):
             self.val_images,
             self.val_masks,
             self.test_images,
-        ) = prepare_data()
+        ) = prepare_data(self.use_radiopedia)
         self.train_augs = albumentations.Compose([
             A.CropNonEmptyMaskIfExists(
                 height=self.target_size,

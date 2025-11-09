@@ -24,6 +24,9 @@ EPOCHS: int = 50
 WEIGHT_DECAY: float = 1e-4
 BATCH_SIZE: int = 32
 
+FINETUNE_EPOCHS: int = 25
+FINETUNE_PATIENCE: int = 8
+
 
 def generate_plots_from_logs(log_dir: str):
     print(f"Attempting to generate plots from logs in: {log_dir}")
@@ -37,13 +40,22 @@ def generate_plots_from_logs(log_dir: str):
 
         epoch_metrics = metrics_df.groupby('epoch').mean()
 
+        # history = {
+        #     'val_loss': epoch_metrics['val_loss'].dropna().tolist(),
+        #     'train_loss': epoch_metrics['train_loss'].dropna().tolist(),
+        #     'val_miou': epoch_metrics['val_miou'].dropna().tolist(),
+        #     'train_miou': epoch_metrics['train_miou'].dropna().tolist(),
+        #     'val_acc': epoch_metrics['val_acc'].dropna().tolist(),
+        #     'train_acc': epoch_metrics['train_acc'].dropna().tolist()
+        # }
+
         history = {
-            'val_loss': epoch_metrics['val_loss'].dropna().tolist(),
-            'train_loss': epoch_metrics['train_loss'].dropna().tolist(),
-            'val_miou': epoch_metrics['val_miou'].dropna().tolist(),
-            'train_miou': epoch_metrics['train_miou'].dropna().tolist(),
-            'val_acc': epoch_metrics['val_acc'].dropna().tolist(),
-            'train_acc': epoch_metrics['train_acc'].dropna().tolist()
+            'val_loss': metrics_df['val_loss'].dropna().tolist(),
+            'train_loss': metrics_df['train_loss'].dropna().tolist(),
+            'val_miou': metrics_df['val_miou'].dropna().tolist(),
+            'train_miou': metrics_df['train_miou'].dropna().tolist(),
+            'val_acc': metrics_df['val_acc'].dropna().tolist(),
+            'train_acc': metrics_df['train_acc'].dropna().tolist()
         }
 
         print("Generating loss plot...")
@@ -130,12 +142,6 @@ if __name__ == '__main__':
 
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
-    datamodule = CovidDataModule(
-        batch_size=BATCH_SIZE,
-        source_size=SOURCE_SIZE,
-        target_size=TARGET_SIZE
-    )
-
     model = CovidSegmenter(
         num_classes=4,
         max_lr=MAX_LR,
@@ -169,7 +175,40 @@ if __name__ == '__main__':
     )
 
     print("Starting PyTorch Lightning training...")
+    print(f"Using full dataset with radiopedia")
+    datamodule = CovidDataModule(
+        batch_size=BATCH_SIZE,
+        source_size=SOURCE_SIZE,
+        target_size=TARGET_SIZE,
+        use_radiopedia=True
+    )
     trainer.fit(model, datamodule=datamodule)
+
+    print("Starting finetune on medseg...")
+    datamodule = CovidDataModule(
+        batch_size=BATCH_SIZE,
+        source_size=SOURCE_SIZE,
+        target_size=TARGET_SIZE,
+        use_radiopedia=False
+    )
+
+    finetune_early_stopping_callback = EarlyStopping(
+        monitor='val_miou',
+        patience=FINETUNE_PATIENCE,
+        mode='max',
+        verbose=True
+    )
+
+    finetune_trainer = pl.Trainer(
+        accelerator='mps',
+        devices=1,
+        max_epochs=FINETUNE_EPOCHS,
+        callbacks=[checkpoint_callback, finetune_early_stopping_callback],
+        logger=csv_logger,
+        enable_progress_bar=True,
+    )
+
+    finetune_trainer.fit(model, datamodule=datamodule)
 
     print("Training complete.")
     print(f"Best model saved at: {checkpoint_callback.best_model_path}")
