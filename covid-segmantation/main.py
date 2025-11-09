@@ -20,7 +20,7 @@ from plot import plot_loss, plot_score, plot_acc
 SOURCE_SIZE: int = 512
 TARGET_SIZE: int = 256
 MAX_LR: float = 1e-3
-EPOCHS: int = 30
+EPOCHS: int = 50
 WEIGHT_DECAY: float = 1e-4
 BATCH_SIZE: int = 32
 
@@ -153,7 +153,7 @@ if __name__ == '__main__':
 
     early_stopping_callback = EarlyStopping(
         monitor='val_miou',
-        patience=7,
+        patience=10,
         mode='max'
     )
 

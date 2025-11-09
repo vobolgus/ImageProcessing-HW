@@ -47,6 +47,7 @@ class CovidSegmenter(pl.LightningModule):
                  freeze_strategy: FreezeStrategy = FreezeStrategy.PCT70):
         super().__init__()
         self.save_hyperparameters()
+        self.hparams.l1_lambda = 1e-5
 
         print("Creating 2D Unet model with densenet121 backbone...")
         self.model = smp.Unet(
@@ -86,7 +87,16 @@ class CovidSegmenter(pl.LightningModule):
         output = self(image)
         loss = self.criterion(output, mask)
 
+        l1_penalty = 0.0
+        for param in self.model.parameters():
+            if param.requires_grad:
+                l1_penalty += torch.abs(param).sum()
+
+        total_loss = loss + self.hparams.l1_lambda * l1_penalty
+
         self.log(f'{stage}_loss', loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log(f'{stage}_l1_penalty', l1_penalty, on_step=False, on_epoch=True, logger=True)
+        self.log(f'{stage}_total_loss', total_loss, on_step=False, on_epoch=True, logger=True)
 
         preds = torch.argmax(output, dim=1)
 
@@ -101,7 +111,7 @@ class CovidSegmenter(pl.LightningModule):
             self.log(f'{stage}_miou', self.val_miou, on_step=False, on_epoch=True, prog_bar=True)
             self.log(f'{stage}_acc', self.val_acc, on_step=False, on_epoch=True, prog_bar=True)
 
-        return loss
+        return total_loss
 
     def training_step(self, batch, batch_idx):
         return self._common_step(batch, batch_idx, 'train')
