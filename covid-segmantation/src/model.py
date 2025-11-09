@@ -1,9 +1,6 @@
 import torch
-import os
 
 from huggingface_hub import hf_hub_download
-from monai.networks.nets import SwinUNETR
-from networkx.classes import freeze
 from torchinfo import summary
 import segmentation_models_pytorch as smp
 import freeze_utils
