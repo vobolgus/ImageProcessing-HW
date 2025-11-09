@@ -3,6 +3,7 @@ from torch.utils.data import DataLoader
 import albumentations
 import cv2
 import os
+import albumentations as A
 
 from data import prepare_data
 from dataset import Dataset
@@ -28,8 +29,12 @@ class CovidDataModule(pl.LightningDataModule):
             self.val_masks,
             self.test_images,
         ) = prepare_data()
-
         self.train_augs = albumentations.Compose([
+            A.CropNonEmptyMaskIfExists(
+                height=self.target_size,
+                width=self.target_size,
+                p=1.0
+            ),
             albumentations.Rotate(limit=360, p=0.9, border_mode=cv2.BORDER_REPLICATE),
             albumentations.RandomSizedCrop(
                 (int(self.source_size * 0.75), self.source_size),
@@ -37,6 +42,19 @@ class CovidDataModule(pl.LightningDataModule):
                 interpolation=cv2.INTER_NEAREST
             ),
             albumentations.HorizontalFlip(p=0.5),
+            albumentations.RandomBrightnessContrast(p=0.5),
+
+            A.OneOf([
+                A.GaussNoise(p=0.5),
+                A.CoarseDropout(
+                    num_holes_range=(1, 8),
+                    hole_height_range=(int(self.target_size * 0.05), int(self.target_size * 0.1)),
+                    hole_width_range=(int(self.target_size * 0.05), int(self.target_size * 0.1)),
+                    fill=0,
+                    fill_mask=0,
+                    p=0.5
+                )
+            ], 0.9),
         ])
 
         self.val_augs = albumentations.Compose([
