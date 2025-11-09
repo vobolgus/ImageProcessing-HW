@@ -13,15 +13,6 @@ from plot import generate_plots_from_logs
 from test import run_test_predictions, run_val_tta_evaluation
 
 
-# Те же базовые гиперпараметры, что и в main.py
-SOURCE_SIZE: int = 512
-TARGET_SIZE: int = SOURCE_SIZE
-MAX_LR: float = 5e-5
-WEIGHT_DECAY: float = 1e-5
-L1_REG: float = 1e-6
-BATCH_SIZE: int = 16
-
-
 def find_latest_checkpoint(checkpoints_dir: str = "checkpoints") -> str:
     pattern = os.path.join(checkpoints_dir, "*.ckpt")
     candidates = glob.glob(pattern)
@@ -53,7 +44,7 @@ def main():
     torch.set_float32_matmul_precision('high')
 
     accelerator = pick_accelerator()
-    device = torch.device("mps" if accelerator == "mps" else ("cuda" if accelerator == "gpu" else "cpu"))
+    device = torch.device("mps" if accelerator == "mps" else ("cuda" if accelerator == "cuda" else "cpu"))
     print(f"Активатор: {accelerator}. Устройство: {device}.")
 
     ckpt_path = CKPT_PATH.strip()
@@ -66,8 +57,14 @@ def main():
         return
 
     saved_epoch = read_epoch_from_ckpt(ckpt_path)
-    max_epochs = saved_epoch + int(ADD_EPOCHS)
-    print(f"Продолжаем с эпохи {saved_epoch} ещё на {ADD_EPOCHS} эпох (max_epochs={max_epochs}).")
+    # ВАЖНО: делаем т.н. "тёплый перезапуск" — загружаем ТОЛЬКО веса модели,
+    # а состояния оптимизатора/шедулера НЕ восстанавливаем. Это предотвращает
+    # ошибку OneCycleLR вида "Tried to step X times... total steps is Y" при
+    # попытке продолжить обучение сверх total_steps из старого чекпоинта.
+    # Поэтому запускаем ровно ADD_EPOCHS дополнительных эпох с нуля для оптимизатора/шедулера.
+    max_epochs = int(ADD_EPOCHS)
+    print(f"Тёплый перезапуск с весов чекпоинта (прошлая эпоха: {saved_epoch}).\n"
+          f"Обучаем ДОПОЛНИТЕЛЬНО {ADD_EPOCHS} эпох (max_epochs={max_epochs}) со свежими оптимизатором и шедулером.")
 
     datamodule = CovidDataModule(
         batch_size=BATCH_SIZE,
@@ -76,7 +73,9 @@ def main():
         use_radiopedia=USE_RADIOPEDIA
     )
 
-    model = CovidSegmenter(
+    # Загружаем веса модели из чекпоинта, но создаём новые оптимизатор/шедулер в текущем запуске.
+    model = CovidSegmenter.load_from_checkpoint(
+        ckpt_path,
         num_classes=4,
         max_lr=MAX_LR,
         weight_decay=WEIGHT_DECAY,
@@ -103,9 +102,10 @@ def main():
         enable_progress_bar=True,
     )
 
-    # 5) РЕЗЮМЕ ОБУЧЕНИЯ c восстановлением оптимизатора/шедулера/счётчиков
-    print("Запускаем дообучение из чекпоинта с сохранением всех состояний оптимизатора...")
-    trainer.fit(model, datamodule=datamodule, ckpt_path=ckpt_path)
+    # 5) Дообучение c загрузкой ТОЛЬКО весов (без восстановления состояний оптимизатора/шедулера)
+    # Это позволяет задать новые total_steps для OneCycleLR и избежать переполнения шагов.
+    print("Запускаем дообучение: только веса из чекпоинта, без восстановления состояний оптимизатора/шедулера.")
+    trainer.fit(model, datamodule=datamodule)
 
     print("Дообучение завершено.")
     print(f"Лучший чекпоинт: {checkpoint_callback.best_model_path}")
@@ -133,8 +133,15 @@ def main():
     miou_for_name = best_score.item() if best_score is not None else None
     run_test_predictions(checkpoint_callback, datamodule, device, TARGET_SIZE, miou_for_name)
 
+SOURCE_SIZE: int = 512
+TARGET_SIZE: int = SOURCE_SIZE
+MAX_LR: float = 5e-5
+WEIGHT_DECAY: float = 1e-5
+L1_REG: float = 1e-6
+BATCH_SIZE: int = 16
+
 CKPT_PATH: str = "checkpoints/best_model-epoch=69-val_miou=0.636.ckpt"  # путь к .ckpt; если пусто — возьмём самый свежий из папки checkpoints/
-ADD_EPOCHS: int = 100
+ADD_EPOCHS: int = 500
 USE_RADIOPEDIA: bool = False
 
 

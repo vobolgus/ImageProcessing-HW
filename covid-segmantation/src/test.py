@@ -108,7 +108,7 @@ def run_test_predictions(checkpoint_callback, datamodule, device, target_size, m
     # test_masks_prediction_original_size = scipy.ndimage.zoom(test_masks_prediction, (1, 2, 2, 1), order=0)
 
     # Код из ноутбука (и ваш) обрезает последние 2 класса. Это странно, но оставим как есть.
-    test_masks_prediction_original_size = scipy.ndimage.zoom(test_masks_prediction[..., :-2], (1, 2, 2, 1), order=0)
+    test_masks_prediction_original_size = scipy.ndimage.zoom(test_masks_prediction[..., :-2], (1, 1, 1, 1), order=0)
     print(f"Resized predictions shape: {test_masks_prediction_original_size.shape}")
 
     print("Creating submission file (sub.csv)...")
@@ -221,7 +221,7 @@ def _pick_accelerator() -> str:
     return "cpu"
 
 
-CKPT_PATH: str = "checkpoints/best_model-epoch=69-val_miou=0.636.ckpt"  # путь к чекпоинту; если файла нет — будет ошибка
+CKPT_PATH: str = "checkpoints/best_model-epoch=325-val_miou=0.667.ckpt"
 TEST_BATCH_SIZE: int = 16
 SOURCE_SIZE: int = 512
 TARGET_SIZE: int = 512

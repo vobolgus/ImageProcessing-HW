@@ -340,6 +340,31 @@ class CovidSegmenter(pl.LightningModule):
         else:
             print("No class weights provided; using unweighted CrossEntropyLoss.")
 
+    # --- Robust checkpoint loading for resume training ---
+    def load_state_dict(self, state_dict, strict: bool = True):
+        """
+        Lightning restores checkpoints with strict=True by default when resuming
+        (Trainer.fit(..., ckpt_path=...)). Some earlier checkpoints may contain
+        a key like 'criterion.weight' (when the loss had class weights), while
+        the current model's loss may not have this buffer registered. In such
+        cases PyTorch would raise an "Unexpected key(s)" error.
+
+        To make resume robust without relaxing strictness for all weights, we
+        precisely drop 'criterion.weight' from the incoming state_dict if the
+        current module does not expect it.
+        """
+        try:
+            current_keys = set(super().state_dict().keys())
+            if 'criterion.weight' in state_dict and 'criterion.weight' not in current_keys:
+                # Drop only the offending key; keep strict for everything else
+                state_dict = {k: v for k, v in state_dict.items() if k != 'criterion.weight'}
+                print("[CovidSegmenter] Removed 'criterion.weight' from checkpoint while loading (not present in current model).")
+        except Exception:
+            # If any issue arises while checking, fall back to default behavior
+            pass
+
+        return super().load_state_dict(state_dict, strict=strict)
+
 
 if __name__ == '__main__':
     device_str = "mps" if torch.backends.mps.is_available() else "cpu"
