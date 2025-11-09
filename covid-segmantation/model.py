@@ -1,7 +1,8 @@
 import torch
 import os
 from monai.networks.nets import SwinUNETR
-
+from torchinfo import summary
+import segmentation_models_pytorch as smp
 
 def create_model(device, num_classes=4, pretrained_weights_path="models/model_swinvit.pt"):
     """
@@ -17,24 +18,31 @@ def create_model(device, num_classes=4, pretrained_weights_path="models/model_sw
         torch.nn.Module: Готовая к обучению SOTA-модель.
     """
 
-    model = SwinUNETR(
-        in_channels=1,  # 1 входной канал (КТ)
-        out_channels=num_classes,  # Количество классов (как в вашем baseline)
-        feature_size=48,  # "Base" версия, соответствует весам model_swinvit.pt [1]
-        use_checkpoint=True  # Экономия VRAM (gradient checkpointing)
+    model = smp.Unet(
+        # 'tu-' означает, что мы берем модель из timm
+        encoder_name="tu-swin_tiny_patch4_window7_224",
+        encoder_weights="imagenet",
+        in_channels=1,
+        classes=num_classes,
     )
-
-    if os.path.exists(pretrained_weights_path):
-        print(f"Loading model weights: {pretrained_weights_path}...")
-        weight = torch.load(pretrained_weights_path, weights_only=True, map_location=torch.device('cpu'))
-        model.load_from(weights=weight)
-
-    else:
-        raise ValueError()
 
     model.to(device)
 
     return model
 
+
 if __name__ == '__main__':
-    create_model(torch.device("cpu"), num_classes=2)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = create_model(device, num_classes=4)
+    print("\nModel created successfully:")
+    print(f"Model is on device: {next(model.parameters()).device}")
+
+    # --- 2. Вызываем summary ---
+    # Указываем (batch_size, channels, H, W)
+    # (H и W взяты из вашего TARGET_SIZE = 256 в main.py)
+    batch_size = 16
+    input_channels = 1
+    image_size = 256
+
+    print("\n--- Model Summary ---")
+    summary(model, input_size=(batch_size, input_channels, image_size, image_size))
