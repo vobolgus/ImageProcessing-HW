@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader
 
 # PyTorch Lightning + TorchMetrics
 import pytorch_lightning as pl
+from pytorch_lightning.callbacks import EarlyStopping
 from torchmetrics import Accuracy, F1Score
 
 from src.data.dataset import setup_dataset_realtime, DatasetBundle, get_STL_dataset
@@ -164,6 +165,8 @@ def train_model(
         weights_dir: str,
         num_classes: int,
         class_weights: Optional[torch.Tensor] = None,
+        early_stopping: bool = True,
+        patience: int = 5,
 ) -> None:
     # Note: criterion and optimizer params kept for backward compatibility but handled by Lightning.
     os.makedirs(weights_dir, exist_ok=True)
@@ -182,6 +185,19 @@ def train_model(
     # Callbacks to preserve legacy behavior
     history_cb = HistoryLogger()
     best_saver_cb = BestF1Saver(model_name=model_name, weights_dir=weights_dir)
+    callbacks = [history_cb, best_saver_cb]
+
+    # Add early stopping callback if enabled
+    if early_stopping:
+        early_stop_cb = EarlyStopping(
+            monitor='val_f1',
+            patience=patience,
+            mode='max',
+            verbose=True,
+            min_delta=0.001,
+        )
+        callbacks.append(early_stop_cb)
+        print(f"Early stopping enabled: patience={patience}, monitor=val_f1")
 
     # Map device to Lightning accelerator
     if device.type == 'cuda':
@@ -197,12 +213,15 @@ def train_model(
         devices=1,
         log_every_n_steps=10,
         enable_progress_bar=True,
-        callbacks=[history_cb, best_saver_cb],
+        callbacks=callbacks,
     )
 
     print("\nStarting training with PyTorch Lightning...")
     trainer.fit(lit_module, train_dataloaders=train_loader, val_dataloaders=val_loader)
-    print("\nTraining complete!")
+
+    if early_stopping and trainer.early_stopping_callback.stopped_epoch > 0:
+        print(f"\nTraining stopped early at epoch {trainer.early_stopping_callback.stopped_epoch + 1}")
+    print("Training complete!")
 
     # Filter out epochs that might have None values if early epoch logs were missing
     history = [row for row in history_cb.history if all(k in row for k in ['train_loss','train_acc','val_loss','val_acc','val_f1'])]

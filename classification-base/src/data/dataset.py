@@ -4,6 +4,7 @@ import random
 import multiprocessing
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
+from enum import Enum, auto
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 from PIL import Image
 
@@ -18,6 +19,13 @@ from torchvision.datasets.vision import VisionDataset
 from torchvision.utils import make_grid
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
+
+
+class AugmentationLevel(Enum):
+    """Data augmentation intensity levels."""
+    LIGHT = auto()
+    MEDIUM = auto()
+    HEAVY = auto()
 
 
 class ImagePathsDataset(Dataset):
@@ -78,6 +86,61 @@ def _default_model_transform() -> transforms.Compose:
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
+
+
+def _light_augmentation_transform() -> transforms.Compose:
+    """Light augmentation: minimal transforms for sensitive data."""
+    return transforms.Compose([
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomRotation(10),
+    ])
+
+
+def _medium_augmentation_transform() -> transforms.Compose:
+    """Medium augmentation: balanced transforms for most use cases."""
+    return transforms.Compose([
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomRotation(15),
+        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.1, hue=0.05),
+        transforms.RandomAffine(degrees=0, translate=(0.1, 0.1), scale=(0.9, 1.1)),
+    ])
+
+
+def _heavy_augmentation_transform() -> transforms.Compose:
+    """Heavy augmentation: aggressive transforms for maximum regularization.
+
+    Note: RandomErasing is NOT included here because it requires tensor input.
+    It will be applied after ToTensor in the model transform pipeline.
+    """
+    return transforms.Compose([
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomVerticalFlip(p=0.1),
+        transforms.RandomRotation(30),
+        transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.3, hue=0.15),
+        transforms.RandomAffine(degrees=15, translate=(0.15, 0.15), scale=(0.8, 1.2), shear=10),
+        transforms.RandomPerspective(distortion_scale=0.2, p=0.3),
+        transforms.RandomGrayscale(p=0.1),
+        transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),
+    ])
+
+
+def get_augmentation_transform(level: AugmentationLevel) -> transforms.Compose:
+    """Get augmentation transform based on the specified level.
+
+    Args:
+        level: AugmentationLevel enum value (LIGHT, MEDIUM, HEAVY)
+
+    Returns:
+        A transforms.Compose object with the appropriate augmentations
+    """
+    if level == AugmentationLevel.LIGHT:
+        return _light_augmentation_transform()
+    elif level == AugmentationLevel.MEDIUM:
+        return _medium_augmentation_transform()
+    elif level == AugmentationLevel.HEAVY:
+        return _heavy_augmentation_transform()
+    else:
+        raise ValueError(f"Unknown augmentation level: {level}")
 
 
 def _compute_class_weights(y: Sequence[int], num_classes: int) -> Tuple[List[int], torch.Tensor]:

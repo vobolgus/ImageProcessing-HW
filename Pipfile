@@ -38,6 +38,7 @@ albumentations = "*"
 torchinfo = "*"
 ultralytics = "*"
 transformers = "*"
+termcolor = "*"
 
 [dev-packages]
 

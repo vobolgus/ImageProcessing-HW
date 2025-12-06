@@ -12,6 +12,7 @@ from tqdm import tqdm
 from src.model.swin import load_swin_from_weights
 from src.model.vit import load_vit_from_weights
 from src.model.resnet import load_resnet_from_weights
+from src.model.dino_vit import load_dinov3_from_weights
 from src.data.dataset import setup_dataset_realtime, DatasetBundle, get_STL_dataset
 
 WEIGHTS_DIR = 'models/weights'
@@ -68,6 +69,7 @@ def get_model_loader(model_name: str) -> Callable[[str, int], nn.Module]:
         'vit': load_vit_from_weights,
         'swin': load_swin_from_weights,
         'resnet': load_resnet_from_weights,
+        'dinov3': load_dinov3_from_weights,
     }
 
     for key, loader_func in loaders.items():
