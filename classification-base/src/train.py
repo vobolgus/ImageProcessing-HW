@@ -61,7 +61,8 @@ class ClassificationLightningModule(pl.LightningModule):
         outputs = self.model(inputs)
         loss = self.criterion(outputs, labels)
         if self.l1_lambda > 0:
-            l1_loss = sum(param.abs().sum() for param in self.model.parameters())
+            # Only apply L1 regularization to trainable parameters
+            l1_loss = sum(param.abs().sum() for param in self.model.parameters() if param.requires_grad)
             loss = loss + self.l1_lambda * l1_loss
         preds = torch.argmax(outputs, dim=1)
         self.train_acc.update(preds, labels)
@@ -92,7 +93,9 @@ class ClassificationLightningModule(pl.LightningModule):
         self.val_f1.reset()
 
     def configure_optimizers(self):
-        optimizer = optim.AdamW(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+        # Only optimize trainable parameters (important for LoRA and other freeze strategies)
+        trainable_params = [p for p in self.model.parameters() if p.requires_grad]
+        optimizer = optim.AdamW(trainable_params, lr=self.lr, weight_decay=self.weight_decay)
         return optimizer
 
 

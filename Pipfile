@@ -39,6 +39,7 @@ torchinfo = "*"
 ultralytics = "*"
 transformers = "*"
 termcolor = "*"
+peft = "*"
 
 [dev-packages]
 
